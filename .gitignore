@@ -1,0 +1,18 @@
+# Binaires compilés
+*.o
+*.out
+v1_cpu/raytracer_cpu
+v2_cuda/raytracer_cuda
+*.ptx
+
+# Images de rendu (trop lourdes pour git — garder les .png)
+results/*.ppm
+
+# Logs Slurm
+slurm/logs/
+slurm-*.out
+
+# Temporaires
+*.tmp
+*~
+.vscode/
