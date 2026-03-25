@@ -2,16 +2,12 @@
 #include <math.h>
 
 // =============================================================
-//  Vec3 CUDA — même logique que v1_cpu/vec3.h mais avec les
-//  qualificatifs __device__ __host__ pour être utilisable
-//  à la fois dans le kernel GPU et le code CPU hôte.
+//  Vec3 CUDA — struct POD (pas de constructeur) pour être
+//  compatible avec la mémoire __constant__.
+//  Initialisation par agrégat : Vec3{x, y, z} ou Vec3{}
 // =============================================================
 struct Vec3 {
     float x, y, z;
-
-    __host__ __device__ Vec3()                          : x(0.f), y(0.f), z(0.f)  {}
-    __host__ __device__ Vec3(float x, float y, float z) : x(x),   y(y),   z(z)    {}
-    __host__ __device__ explicit Vec3(float v)          : x(v),   y(v),   z(v)    {}
 
     __host__ __device__ Vec3 operator+(const Vec3& v) const { return {x+v.x, y+v.y, z+v.z}; }
     __host__ __device__ Vec3 operator-(const Vec3& v) const { return {x-v.x, y-v.y, z-v.z}; }
@@ -35,7 +31,7 @@ struct Vec3 {
 
     __host__ __device__ Vec3 normalized() const {
         float l = length();
-        return (l > 1e-8f) ? (*this / l) : Vec3(0.f);
+        return (l > 1e-8f) ? (*this / l) : Vec3{0.f, 0.f, 0.f};
     }
 
     __host__ __device__ Vec3 clamped() const {

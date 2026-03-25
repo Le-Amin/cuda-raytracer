@@ -19,6 +19,7 @@
 #include <cstring>
 #include <fstream>
 #include <chrono>
+#include <vector>
 #include <cuda_runtime.h>
 
 #include "vec3.cuh"
@@ -54,12 +55,18 @@ struct HitInfo {
     bool     hit;
 };
 
+// Crée un HitInfo "vide" (pas d'intersection)
+__device__ inline HitInfo make_empty_hit() {
+    HitInfo h;
+    h.t   = 1e30f;
+    h.hit = false;
+    return h;
+}
+
 __device__
 HitInfo find_hit(const Ray& ray)
 {
-    HitInfo rec;
-    rec.t   = 1e30f;
-    rec.hit = false;
+    HitInfo rec = make_empty_hit();
 
     for (int i = 0; i < d_num_spheres; ++i) {
         float t = d_spheres[i].intersect(ray);
@@ -114,7 +121,7 @@ __device__
 Vec3 shade(const Ray& ray)
 {
     HitInfo rec = find_hit(ray);
-    if (!rec.hit) return Vec3(0.f);  // fond noir
+    if (!rec.hit) return Vec3{0.f, 0.f, 0.f};  // fond noir
 
     const Material& mat = rec.material;
     Vec3 N = rec.normal;
@@ -137,7 +144,8 @@ Vec3 shade(const Ray& ray)
         // Spéculaire
         Vec3  R  = (N * (2.f * NL) - L).normalized();
         float RV = fmaxf(0.f, R.dot(V));
-        Vec3 specular = Vec3(mat.specular) * powf(RV, mat.shininess);
+        float s = mat.specular;
+        Vec3 specular = Vec3{s, s, s} * powf(RV, mat.shininess);
 
         color += (diffuse + specular) * light.color * light.intensity;
     }
@@ -212,21 +220,22 @@ static void build_scene(Sphere* spheres, int& ns,
                         Plane*  planes,  int& np,
                         Light*  lights,  int& nl)
 {
-    Material mat_floor(Vec3(0.8f, 0.8f, 0.8f), 0.1f, 0.9f, 0.1f,  8.f);
-    Material mat_red  (Vec3(0.9f, 0.1f, 0.1f), 0.1f, 0.8f, 0.2f, 16.f);
-    Material mat_green(Vec3(0.1f, 0.8f, 0.2f), 0.1f, 0.7f, 0.5f, 64.f);
-    Material mat_blue (Vec3(0.1f, 0.3f, 0.9f), 0.1f, 0.5f, 0.9f,128.f);
+    Material mat_floor = {{0.8f, 0.8f, 0.8f}, 0.1f, 0.9f, 0.1f,  8.f};
+    Material mat_red   = {{0.9f, 0.1f, 0.1f}, 0.1f, 0.8f, 0.2f, 16.f};
+    Material mat_green = {{0.1f, 0.8f, 0.2f}, 0.1f, 0.7f, 0.5f, 64.f};
+    Material mat_blue  = {{0.1f, 0.3f, 0.9f}, 0.1f, 0.5f, 0.9f,128.f};
 
-    planes [0] = Plane (Vec3(0.f,-1.f, 0.f), Vec3(0.f,1.f,0.f),  mat_floor);
+    // Normale déjà unitaire {0,1,0} → pas besoin de normaliser
+    planes [0] = {{0.f,-1.f, 0.f}, {0.f, 1.f, 0.f}, mat_floor};
     np = 1;
 
-    spheres[0] = Sphere(Vec3(-2.f, 0.f,-5.f), 1.f,   mat_red);
-    spheres[1] = Sphere(Vec3( 0.f, 0.5f,-4.f),1.5f,  mat_green);
-    spheres[2] = Sphere(Vec3( 2.f, 0.f,-5.f), 1.f,   mat_blue);
+    spheres[0] = {{-2.f, 0.f,-5.f}, 1.f,  mat_red};
+    spheres[1] = {{ 0.f, 0.5f,-4.f},1.5f, mat_green};
+    spheres[2] = {{ 2.f, 0.f,-5.f}, 1.f,  mat_blue};
     ns = 3;
 
-    lights [0] = Light (Vec3(-3.f, 5.f,-2.f), Vec3(1.f,1.f,1.f),       1.0f);
-    lights [1] = Light (Vec3( 4.f, 3.f,-1.f), Vec3(1.f,0.9f,0.7f),     0.6f);
+    lights [0] = {{-3.f, 5.f,-2.f}, {1.f, 1.f, 1.f},     1.0f};
+    lights [1] = {{ 4.f, 3.f,-1.f}, {1.f, 0.9f, 0.7f},   0.6f};
     nl = 2;
 }
 
@@ -258,8 +267,9 @@ int main(int argc, char* argv[])
     build_scene(h_spheres, ns, h_planes, np, h_lights, nl);
 
     // --- Caméra ---
-    Camera h_cam(Vec3(0.f,1.f,2.f), Vec3(0.f,0.f,-4.f),
-                 Vec3(0.f,1.f,0.f), 60.f, W, H);
+    Camera h_cam = Camera::create(
+        Vec3{0.f, 1.f, 2.f}, Vec3{0.f, 0.f, -4.f},
+        Vec3{0.f, 1.f, 0.f}, 60.f, W, H);
 
     // --- Copie vers mémoire constante GPU ---
     CUDA_CHECK(cudaMemcpyToSymbol(d_spheres,     h_spheres, ns * sizeof(Sphere)));

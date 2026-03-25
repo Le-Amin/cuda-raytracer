@@ -7,6 +7,7 @@
 #define M_PI 3.14159265358979323846f
 #endif
 
+// POD — utiliser Camera::create() côté hôte pour construire
 struct Camera {
     Vec3  eye;
     Vec3  lower_left;
@@ -14,12 +15,10 @@ struct Camera {
     Vec3  vertical;
     int   width, height;
 
-    __host__ __device__ Camera() : width(0), height(0) {}
-
-    __host__
-    Camera(const Vec3& eye, const Vec3& target, const Vec3& up,
-           float fov_deg, int w, int h)
-        : eye(eye), width(w), height(h)
+    // Fonction de construction côté hôte (remplace le constructeur)
+    static __host__ Camera create(const Vec3& eye, const Vec3& target,
+                                  const Vec3& up, float fov_deg,
+                                  int w, int h)
     {
         float aspect = (float)w / h;
         float theta  = fov_deg * (float)M_PI / 180.f;
@@ -30,9 +29,14 @@ struct Camera {
         Vec3 right   = forward.cross(up).normalized();
         Vec3 up_cam  = right.cross(forward);
 
-        lower_left = eye + forward - right * half_w - up_cam * half_h;
-        horizontal = right  * (2.f * half_w);
-        vertical   = up_cam * (2.f * half_h);
+        Camera cam;
+        cam.eye        = eye;
+        cam.width      = w;
+        cam.height     = h;
+        cam.lower_left = eye + forward - right * half_w - up_cam * half_h;
+        cam.horizontal = right  * (2.f * half_w);
+        cam.vertical   = up_cam * (2.f * half_h);
+        return cam;
     }
 
     __host__ __device__

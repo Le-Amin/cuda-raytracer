@@ -4,16 +4,12 @@
 #include "ray.cuh"
 #include "material.cuh"
 
+// POD — Plane p = {{px,py,pz}, {nx,ny,nz}, material};
+// ATTENTION : normaliser la normale avant de remplir la struct
 struct Plane {
     Vec3     point;
     Vec3     normal;
     Material material;
-
-    __host__ __device__ Plane() {}
-
-    __host__ __device__
-    Plane(const Vec3& p, const Vec3& n, const Material& mat)
-        : point(p), normal(n.normalized()), material(mat) {}
 
     __host__ __device__
     float intersect(const Ray& ray) const {

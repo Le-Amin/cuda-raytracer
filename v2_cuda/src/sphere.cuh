@@ -4,17 +4,11 @@
 #include "ray.cuh"
 #include "material.cuh"
 
+// POD — Sphere s = {{cx,cy,cz}, radius, material};
 struct Sphere {
     Vec3     center;
     float    radius;
     Material material;
-
-    __host__ __device__
-    Sphere() : radius(1.f) {}
-
-    __host__ __device__
-    Sphere(const Vec3& c, float r, const Material& mat)
-        : center(c), radius(r), material(mat) {}
 
     __host__ __device__
     float intersect(const Ray& ray) const {
