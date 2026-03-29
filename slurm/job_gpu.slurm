@@ -1,7 +1,8 @@
 #!/bin/bash
 # =============================================================
-#  Job SLURM — Raytracer CUDA v2
+#  Job SLURM — Raytracer CUDA v2 (amélioré)
 #  Soumission : cd ~/cuda-raytracer && sbatch slurm/job_gpu.slurm
+#  Animation  : cd ~/cuda-raytracer && sbatch slurm/job_gpu.slurm anim
 #  Suivi      : squeue -u $USER
 #  Logs       : slurm/logs/gpu_<jobid>.out
 #
@@ -21,28 +22,25 @@
 
 # Mémoire CPU hôte et temps
 #SBATCH --mem=4G
-#SBATCH --time=00:15:00
+#SBATCH --time=00:30:00
 
-# ---- On se place à la racine du projet dès le début ----
+# ---- On se place à la racine du projet ----
 cd $SLURM_SUBMIT_DIR
 
 # ---- Environnement ----
 echo "================================================"
-echo "  Job ID   : $SLURM_JOB_ID"
-echo "  Nœud     : $SLURMD_NODENAME"
+echo "  Job ID     : $SLURM_JOB_ID"
+echo "  Nœud       : $SLURMD_NODENAME"
 echo "  Répertoire : $(pwd)"
-echo "  Date     : $(date)"
-echo "  Arch     : $(uname -m)"
+echo "  Date       : $(date)"
+echo "  Arch       : $(uname -m)"
 echo "================================================"
 
-# Charger l'environnement ARM GPU de ROMEO (CUDA + compilateurs)
 romeo_load_armgpu_env
 spack load cuda@12.6.3
 
-# Vérifier que nvcc est accessible
 which nvcc && nvcc --version
 
-# Infos sur le GPU alloué
 nvidia-smi --query-gpu=name,memory.total,driver_version \
            --format=csv,noheader
 
@@ -53,8 +51,16 @@ make clean
 make
 
 # ---- Exécution ----
-echo "[INFO] Lancement du rendu 1280x720 sur GPU H100..."
-time ./raytracer_cuda 1280 720
+# Si argument "anim" passé → mode animation (120 frames)
+# Sinon → image unique
+if [ "$1" = "anim" ]; then
+    echo "[INFO] Mode animation : 120 frames à 1280x720..."
+    time ./raytracer_cuda 1280 720 120
+    echo "[INFO] Pour créer la vidéo :"
+    echo "  ffmpeg -framerate 30 -i ../results/frame_%04d.ppm -c:v libx264 -pix_fmt yuv420p ../results/animation.mp4"
+else
+    echo "[INFO] Mode image unique : 1280x720..."
+    time ./raytracer_cuda 1280 720
+fi
 
 echo "[INFO] Job terminé à $(date)"
-echo "Image disponible : results/output_cuda.ppm"

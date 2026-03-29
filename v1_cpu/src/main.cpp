@@ -1,16 +1,14 @@
 // =============================================================
-//  Raytracer CPU — v1
+//  Raytracer CPU — v1 (amélioré)
 //
-//  Algorithme :
-//    Pour chaque pixel (i,j) de la résolution WIDTH x HEIGHT :
-//      1. Lancer un rayon depuis le centre du pixel
-//      2. Trouver l'intersection la plus proche (t_min ≥ 0)
-//      3. Si intersection → calculer la couleur (Phong + ombres)
-//         Sinon           → couleur noire (fond)
-//      4. Écrire le pixel dans l'image PPM
+//  Fonctionnalités identiques à la version CUDA v2 :
+//    - Éclairage Phong (ambiant + diffus + spéculaire + ombres)
+//    - Réflexions itératives (MAX_DEPTH rebonds)
+//    - Anti-aliasing par supersampling (AA_SAMPLES rayons/pixel)
+//    - Motif damier sur le sol
 //
-//  Scène de test : sol (plan), 3 sphères, 2 lumières
-//  Sortie        : results/output_cpu.ppm
+//  Usage :
+//    ./raytracer_cpu [largeur hauteur]
 // =============================================================
 
 #include <iostream>
@@ -18,6 +16,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 
 #include "vec3.h"
 #include "ray.h"
@@ -28,7 +27,10 @@
 #include "camera.h"
 #include "scene.h"
 
-// Résolution de l'image
+// ---- Paramètres de rendu (identiques à la version CUDA) ----
+#define AA_SAMPLES 4
+
+// Résolution par défaut
 static const int WIDTH  = 1280;
 static const int HEIGHT =  720;
 
@@ -40,7 +42,16 @@ static inline int to_byte(float v) {
 }
 
 // ----------------------------------------------------------------
-//  Écrit un fichier PPM (format P3 — ASCII)
+//  Fonction de hachage pour le jitter (identique à la version CUDA)
+// ----------------------------------------------------------------
+static inline float hash_float(int x, int y, int s) {
+    unsigned int h = (unsigned int)(x * 374761393 + y * 668265263 + s * 1274126177);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return (float)(h & 0x00FFFFFFu) / (float)0x01000000u;
+}
+
+// ----------------------------------------------------------------
+//  Écriture PPM (format P3 — ASCII)
 // ----------------------------------------------------------------
 static void write_ppm(const std::string& filename,
                       const std::vector<Vec3>& pixels,
@@ -64,45 +75,27 @@ static void write_ppm(const std::string& filename,
 }
 
 // ----------------------------------------------------------------
-//  Construction de la scène
+//  Construction de la scène (identique à v2 CUDA)
 // ----------------------------------------------------------------
 static Scene build_scene()
 {
     Scene scene;
-    scene.background = Vec3(0.f, 0.f, 0.f);  // fond noir
+    scene.background = Vec3(0.f, 0.f, 0.f);
 
-    // --- Matériaux ---
-    // Sol quadrillé (diffus, peu spéculaire)
-    Material mat_floor(Vec3(0.8f, 0.8f, 0.8f), 0.1f, 0.9f, 0.1f, 8.f);
+    //                         couleur                   ka   kd   ks   shin  refl
+    Material mat_floor(Vec3(0.8f, 0.8f, 0.8f), 0.1f, 0.9f, 0.1f,   8.f, 0.2f);
+    Material mat_red  (Vec3(0.9f, 0.1f, 0.1f), 0.1f, 0.8f, 0.2f,  16.f, 0.1f);
+    Material mat_green(Vec3(0.1f, 0.8f, 0.2f), 0.1f, 0.7f, 0.5f,  64.f, 0.3f);
+    Material mat_blue (Vec3(0.1f, 0.3f, 0.9f), 0.1f, 0.5f, 0.9f, 128.f, 0.8f);
 
-    // Sphère rouge (très diffuse)
-    Material mat_red(Vec3(0.9f, 0.1f, 0.1f), 0.1f, 0.8f, 0.2f, 16.f);
-
-    // Sphère verte (diffuse + légèrement spéculaire)
-    Material mat_green(Vec3(0.1f, 0.8f, 0.2f), 0.1f, 0.7f, 0.5f, 64.f);
-
-    // Sphère bleue (très spéculaire — aspect plastique brillant)
-    Material mat_blue(Vec3(0.1f, 0.3f, 0.9f), 0.1f, 0.5f, 0.9f, 128.f);
-
-    // --- Objets ---
-    // Plan horizontal : normale (0,1,0), passe par y = -1
     scene.add(Plane(Vec3(0.f, -1.f, 0.f), Vec3(0.f, 1.f, 0.f), mat_floor));
 
-    // Sphère rouge (gauche)
-    scene.add(Sphere(Vec3(-2.f, 0.f, -5.f), 1.f, mat_red));
+    scene.add(Sphere(Vec3(-2.f,  0.f, -5.f), 1.f,  mat_red));
+    scene.add(Sphere(Vec3( 0.f,  0.5f,-4.f), 1.5f, mat_green));
+    scene.add(Sphere(Vec3( 2.f,  0.f, -5.f), 1.f,  mat_blue));
 
-    // Sphère verte (centre)
-    scene.add(Sphere(Vec3( 0.f, 0.5f, -4.f), 1.5f, mat_green));
-
-    // Sphère bleue (droite)
-    scene.add(Sphere(Vec3( 2.f, 0.f, -5.f), 1.f, mat_blue));
-
-    // --- Lumières ---
-    // Lumière blanche principale (au-dessus à gauche)
-    scene.add(Light(Vec3(-3.f, 5.f, -2.f), Vec3(1.f, 1.f, 1.f), 1.0f));
-
-    // Lumière secondaire chaude (à droite, moins intense)
-    scene.add(Light(Vec3( 4.f, 3.f, -1.f), Vec3(1.f, 0.9f, 0.7f), 0.6f));
+    scene.add(Light(Vec3(-3.f, 5.f, -2.f), Vec3(1.f, 1.f, 1.f),     1.0f));
+    scene.add(Light(Vec3( 4.f, 3.f, -1.f), Vec3(1.f, 0.9f, 0.7f),   0.6f));
 
     return scene;
 }
@@ -112,33 +105,31 @@ static Scene build_scene()
 // ----------------------------------------------------------------
 int main(int argc, char* argv[])
 {
-    // Résolution optionnellement passée en argument
     int w = WIDTH;
     int h = HEIGHT;
-    if (argc == 3) {
+    if (argc >= 3) {
         w = std::atoi(argv[1]);
         h = std::atoi(argv[2]);
     }
 
-    std::cout << "=== Raytracer CPU v1 ===\n";
+    std::cout << "=== Raytracer CPU v1 (amélioré) ===\n";
     std::cout << "Résolution : " << w << " x " << h << "\n";
+    std::cout << "AA samples : " << AA_SAMPLES
+              << "  |  Max réflexions : " << MAX_DEPTH << "\n";
 
-    // Caméra
+    // Caméra (même position que v2 CUDA)
     Camera cam(
-        Vec3(0.f, 1.f, 2.f),   // œil
-        Vec3(0.f, 0.f, -4.f),  // cible
-        Vec3(0.f, 1.f, 0.f),   // up
-        60.f,                   // FOV vertical
-        w, h
+        Vec3(0.f, 1.f, 2.f),
+        Vec3(0.f, 0.f, -4.f),
+        Vec3(0.f, 1.f, 0.f),
+        60.f, w, h
     );
 
-    // Scène
     Scene scene = build_scene();
 
-    // Buffer de pixels
     std::vector<Vec3> pixels(w * h);
 
-    // ---- Boucle principale (pour chaque pixel) ----
+    // ---- Boucle principale avec anti-aliasing ----
     auto t_start = std::chrono::high_resolution_clock::now();
 
     for (int j = 0; j < h; ++j) {
@@ -146,15 +137,24 @@ int main(int argc, char* argv[])
             std::cout << "  Ligne " << j << " / " << h << "\r" << std::flush;
 
         for (int i = 0; i < w; ++i) {
-            // Centre du pixel en coordonnées normalisées [0,1]
-            float u = (i + 0.5f) / w;
-            float v = (j + 0.5f) / h;
+            Vec3 color(0.f);
 
-            // 1. Lancer le rayon depuis le centre du pixel
-            Ray ray = cam.get_ray(u, v);
+            // Grille 2×2 stratifiée avec jitter (même que CUDA)
+            for (int s = 0; s < AA_SAMPLES; ++s) {
+                float jx = hash_float(i, j, s * 2);
+                float jy = hash_float(i, j, s * 2 + 1);
 
-            // 2 & 3. Intersection + calcul de couleur (Phong)
-            pixels[j * w + i] = scene.shade(ray);
+                float sx = (float)(s % 2) * 0.5f + jx * 0.5f;
+                float sy = (float)(s / 2) * 0.5f + jy * 0.5f;
+
+                float u = (i + sx) / w;
+                float v = (j + sy) / h;
+
+                Ray ray = cam.get_ray(u, v);
+                color += scene.shade(ray);
+            }
+
+            pixels[j * w + i] = (color * (1.f / AA_SAMPLES)).clamped();
         }
     }
 
@@ -166,7 +166,6 @@ int main(int argc, char* argv[])
               << static_cast<double>(w * h) / elapsed / 1e6
               << " Mpixels/s\n";
 
-    // Écriture de l'image
     write_ppm("../results/output_cpu.ppm", pixels, w, h);
 
     return 0;

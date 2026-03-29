@@ -25,7 +25,7 @@ SRCS      := $(SRC_DIR)/main.cu
 
 RESULTS_DIR := ../results
 
-.PHONY: all run clean
+.PHONY: all run anim clean
 
 all: $(RESULTS_DIR) $(TARGET)
 
@@ -38,6 +38,10 @@ $(TARGET): $(SRCS) $(wildcard $(SRC_DIR)/*.cuh)
 
 run: all
 	./$(TARGET) 1280 720
+
+# Animation : 120 frames (4s à 30fps) — rotation de la caméra
+anim: all
+	./$(TARGET) 1280 720 120
 
 clean:
 	rm -f $(TARGET)
