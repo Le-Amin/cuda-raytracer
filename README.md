@@ -65,7 +65,8 @@ cuda-raytracer/
 │       └── camera.cuh
 ├── slurm/
 │   ├── job_cpu.slurm     ← script SLURM version CPU
-│   └── job_gpu.slurm     ← script SLURM version GPU
+│   ├── job_gpu.slurm     ← script SLURM version GPU
+│   └── job_benchmark.slurm ← benchmark CPU vs GPU (multi-résolutions)
 └── results/              ← images PPM générées
 ```
 
@@ -110,32 +111,52 @@ git pull
 ### 2. Soumettre les jobs
 
 ```bash
-# Vérifier la partition GPU disponible
-sinfo
-
 # Version CPU
 sbatch slurm/job_cpu.slurm
 
-# Version GPU (après avoir adapté --partition et -arch)
+# Version GPU (image unique)
 sbatch slurm/job_gpu.slurm
+
+# Version GPU (animation 120 frames)
+sbatch slurm/job_gpu.slurm anim
+
+# Benchmark CPU vs GPU
+sbatch slurm/job_benchmark.slurm
 
 # Suivi
 squeue -u $USER
 ```
 
-### 3. Adapter les scripts SLURM
-
-Dans `slurm/job_gpu.slurm`, modifier selon les ressources de Romeo :
+### 3. Résultats et logs
 
 ```bash
-#SBATCH --partition=<nom_partition_gpu>   # ex: gpu, gpuv100, gpua100
-module load cuda/<version>                # ex: cuda/12.2
+# Logs SLURM
+slurm/logs/cpu_<jobid>.out
+slurm/logs/gpu_<jobid>.out
+slurm/logs/bench_<jobid>.out
+
+# Sorties de rendu
+results/output_cpu.ppm
+results/output_cuda.ppm
+
+# Résultats benchmark
+results/benchmark.txt
 ```
 
-Dans `v2_cuda/Makefile`, adapter l'architecture :
+### 4. Scripts déjà configurés
+
+Les scripts SLURM actuels sont déjà configurés pour votre contexte ROMEO (compte, contrainte ARM GPU, environnement CUDA) :
+
+```bash
+slurm/job_cpu.slurm
+slurm/job_gpu.slurm
+slurm/job_benchmark.slurm
+```
+
+Le Makefile CUDA est également prêt pour H100 :
 
 ```makefile
-NVCCFLAGS := ... -arch=sm_80   # A100=sm_80 | V100=sm_70 | H100=sm_90
+NVCCFLAGS := ... -arch=sm_90
 ```
 
 ---
