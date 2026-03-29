@@ -165,7 +165,7 @@ NVCCFLAGS := ... -arch=sm_90
 
 | Objet           | Position     | Matériau             |
 | --------------- | ------------ | -------------------- |
-| Plan (sol)      | y = -1       | Blanc diffus         |
+| Plan (sol)      | y = -1       | Damier         
 | Sphère rouge    | (-2, 0, -5)  | Diffuse, r=1         |
 | Sphère verte    | (0, 0.5, -4) | Diffuse+spéc, r=1.5  |
 | Sphère bleue    | (2, 0, -5)   | Très spéculaire, r=1 |
