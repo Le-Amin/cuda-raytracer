@@ -85,19 +85,20 @@ for res in $RESOLUTIONS; do
     # ---- GPU ----
     echo "  [GPU] Rendu en cours..."
     GPU_OUTPUT=$(cd v2_cuda && ./raytracer_cuda $W $H 2>&1)
-    GPU_TIME=$(echo "$GPU_OUTPUT" | grep "Temps total" | awk '{print $(NF-1)}')
+    # Extraire le temps kernel pur depuis la ligne "Frame" (exclut memcpy + I/O)
+    GPU_TIME=$(echo "$GPU_OUTPUT" | grep "Frame.*|" | head -1 | awk -F'|' '{print $2}' | awk '{print $1}' | tr -d '\n\r')
     echo "  [GPU] Temps : ${GPU_TIME} s"
 
     # ---- Speedup ----
     if [ -n "$CPU_TIME" ] && [ -n "$GPU_TIME" ]; then
-        SPEEDUP=$(awk "BEGIN {printf \"%.1f\", $CPU_TIME / $GPU_TIME}")
+        SPEEDUP=$(awk "BEGIN {printf \"%.1f\", ${CPU_TIME} / ${GPU_TIME}}")
     else
         SPEEDUP="N/A"
     fi
     echo "  [SPEEDUP] ${SPEEDUP}x"
 
     # Écrire dans le fichier
-    printf "%-12s | %12s | %12s | %10sx\n" "${W}x${H}" "$CPU_TIME" "$GPU_TIME" "$SPEEDUP" >> $BENCH_FILE
+    printf "%-12s | %12s | %12s | %9.1fx\n" "${W}x${H}" "$CPU_TIME" "$GPU_TIME" "$SPEEDUP" >> $BENCH_FILE
 
     echo ""
 done
